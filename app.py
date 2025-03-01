@@ -1,10 +1,10 @@
 import streamlit as st
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import CharacterTextSplitter
-from langchain_community.embeddings import OpenAIEmbeddings
+from langchain_community.embeddings.openai import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
-from langchain.chains.question_answering import load_qa_chain
-from langchain_community.llms import OpenAI
+from langchain.chains import ConversationalRetrievalChain
+from langchain_community.chat_models import ChatOpenAI
 import tempfile
 import os
 from dotenv import load_dotenv
@@ -43,7 +43,7 @@ class PDFChatbot:
         docs = text_splitter.split_documents(pages)
 
         # Créer les embeddings avec la clé API explicite
-        embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
+        embeddings = OpenAIEmbeddings(api_key=OPENAI_API_KEY)
         
         # Créer la base de données vectorielle
         self.vectorstore = FAISS.from_documents(docs, embeddings)
@@ -52,30 +52,23 @@ class PDFChatbot:
         if self.pdf_content:
             os.unlink(self.pdf_path)
 
-    def get_conversation_chain(self):
-        """Crée une chaîne de conversation avec la base de données vectorielle."""
-        if not self.vectorstore:
-            return None
-        
-        llm = OpenAI(temperature=0, openai_api_key=OPENAI_API_KEY)
-        chain = load_qa_chain(llm, chain_type="stuff")
-        return chain
+        # Initialiser la chaîne de conversation
+        llm = ChatOpenAI(temperature=0, api_key=OPENAI_API_KEY)
+        self.conversation = ConversationalRetrievalChain.from_llm(
+            llm=llm,
+            retriever=self.vectorstore.as_retriever(),
+            return_source_documents=True
+        )
 
     def get_response(self, question, chat_history=[]):
         """Obtient une réponse à une question."""
-        if self.vectorstore:
-            # Rechercher les documents pertinents
-            docs = self.vectorstore.similarity_search(question)
-            
-            # Obtenir la réponse
-            chain = self.get_conversation_chain()
-            response = chain.run(input_documents=docs, question=question)
-            
-            return response
+        if self.conversation:
+            response = self.conversation({"question": question, "chat_history": chat_history})
+            return response["answer"]
         return "Veuillez d'abord charger un document PDF."
 
 def main():
-    st.title("PDF Chatbot ")
+    st.title("PDF Chatbot")
     
     # Initialiser l'état de session
     if 'chatbot' not in st.session_state:
@@ -84,7 +77,7 @@ def main():
         st.session_state.chat_history = []
 
     # Section upload
-    st.markdown("##  Upload ton PDF")
+    st.markdown("## Upload ton PDF")
     uploaded_file = st.file_uploader("Choisis un fichier PDF", type="pdf")
     
     if uploaded_file:
@@ -102,14 +95,14 @@ def main():
     # Section chat
     if st.session_state.chatbot:
         st.markdown("---")
-        st.markdown("##  Chat avec ton PDF")
+        st.markdown("## Chat avec ton PDF")
         
         # Zone de saisie pour la question
         question = st.text_input("Pose ta question sur le contenu du PDF :")
         
         if question:
             # Obtenir et afficher la réponse
-            response = st.session_state.chatbot.get_response(question)
+            response = st.session_state.chatbot.get_response(question, st.session_state.chat_history)
             
             # Ajouter à l'historique
             st.session_state.chat_history.append({"question": question, "answer": response})
