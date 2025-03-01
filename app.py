@@ -115,7 +115,8 @@ def main():
                     chat_link = chatbot.get_chat_link()
                     st.success("PDF traité avec succès!")
                     st.markdown("## Lien de votre chatbot")
-                    st.markdown(f"Voici le lien direct vers votre chatbot : `{st.experimental_get_query_params().get('base_url', [''])[0]}{chat_link}`")
+                    base_url = "https://pdf-chatbot-ai-oumaimhali.streamlit.app"
+                    st.markdown(f"Voici le lien direct vers votre chatbot : {base_url}{chat_link}")
 
     # Section chat
     if st.session_state.chatbot:
