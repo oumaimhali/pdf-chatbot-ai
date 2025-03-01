@@ -34,23 +34,11 @@ class PDFChatbot:
             return self.chat_id
         return None
 
-    def get_embed_code(self):
-        """Génère le code d'intégration HTML pour ce PDF spécifique."""
+    def get_chat_link(self):
+        """Génère le lien direct vers le chat pour ce PDF."""
         if not self.chat_id:
             self.generate_chat_id()
-        
-        return f'''
-<!-- Code d'intégration pour {self.pdf_name} -->
-<div id="pdf-chat-{self.chat_id}"></div>
-<script src="https://your-domain.com/static/chatpdf-widget.js"></script>
-<script>
-    new PDFChatWidget({{
-        containerId: "pdf-chat-{self.chat_id}",
-        chatId: "{self.chat_id}",
-        pdfName: "{self.pdf_name}"
-    }});
-</script>
-'''
+        return f"/chat/{self.chat_id}"
 
     def process_pdf(self):
         """Traite le fichier PDF et crée une base de données vectorielle."""
@@ -107,8 +95,6 @@ def main():
         st.session_state.chatbot = None
     if 'chat_history' not in st.session_state:
         st.session_state.chat_history = []
-    if 'embed_code' not in st.session_state:
-        st.session_state.embed_code = None
 
     # Section upload
     st.markdown("## Upload ton PDF")
@@ -124,14 +110,12 @@ def main():
                     chatbot = PDFChatbot(pdf_content=uploaded_file.getvalue(), pdf_name=uploaded_file.name)
                     chatbot.process_pdf()
                     st.session_state.chatbot = chatbot
-                    st.session_state.embed_code = chatbot.get_embed_code()
+                    
+                    # Générer et afficher le lien du chat
+                    chat_link = chatbot.get_chat_link()
                     st.success("PDF traité avec succès!")
-
-    # Section code d'intégration
-    if st.session_state.embed_code:
-        st.markdown("## Code d'intégration")
-        st.markdown("Utilisez ce code pour intégrer le chatbot sur votre site web :")
-        st.code(st.session_state.embed_code, language="html")
+                    st.markdown("## Lien de votre chatbot")
+                    st.markdown(f"Voici le lien direct vers votre chatbot : `{st.experimental_get_query_params().get('base_url', [''])[0]}{chat_link}`")
 
     # Section chat
     if st.session_state.chatbot:
