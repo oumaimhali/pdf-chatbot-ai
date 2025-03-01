@@ -12,6 +12,9 @@ from dotenv import load_dotenv
 import requests
 import base64
 import json
+import time
+import random
+import string
 
 # Charger les variables d'environnement
 load_dotenv()
@@ -20,12 +23,17 @@ load_dotenv()
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 GITHUB_TOKEN = os.getenv('GITHUB_TOKEN')
 
+def generate_unique_repo_name(base_name):
+    timestamp = int(time.time())
+    random_suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
+    return f"{base_name}-{timestamp}-{random_suffix}"
+
 class PDFChatbotCreator:
     def __init__(self, pdf_content, pdf_name):
         self.pdf_content = pdf_content
         self.pdf_name = pdf_name
         self.chat_id = self._generate_chat_id()
-        self.repo_name = f"pdf-chat-{self.chat_id}"
+        self.repo_name = generate_unique_repo_name(f"pdf-chat-{self.chat_id}")
         self.vectorstore = None
 
     def _generate_chat_id(self):
