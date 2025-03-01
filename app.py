@@ -12,6 +12,9 @@ from dotenv import load_dotenv
 # Charger les variables d'environnement
 load_dotenv()
 
+# Configurer la clé API OpenAI
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+
 class PDFChatbot:
     def __init__(self, pdf_path=None, pdf_content=None):
         self.pdf_path = pdf_path
@@ -39,8 +42,8 @@ class PDFChatbot:
         )
         docs = text_splitter.split_documents(pages)
 
-        # Créer les embeddings
-        embeddings = OpenAIEmbeddings()
+        # Créer les embeddings avec la clé API explicite
+        embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
         
         # Créer la base de données vectorielle
         self.vectorstore = FAISS.from_documents(docs, embeddings)
@@ -54,7 +57,7 @@ class PDFChatbot:
         if not self.vectorstore:
             return None
         
-        llm = OpenAI(temperature=0)
+        llm = OpenAI(temperature=0, openai_api_key=OPENAI_API_KEY)
         chain = load_qa_chain(llm, chain_type="stuff")
         return chain
 
@@ -72,7 +75,7 @@ class PDFChatbot:
         return "Veuillez d'abord charger un document PDF."
 
 def main():
-    st.title("PDF Chatbot 📚")
+    st.title("PDF Chatbot ")
     
     # Initialiser l'état de session
     if 'chatbot' not in st.session_state:
@@ -81,7 +84,7 @@ def main():
         st.session_state.chat_history = []
 
     # Section upload
-    st.markdown("## 📤 Upload ton PDF")
+    st.markdown("##  Upload ton PDF")
     uploaded_file = st.file_uploader("Choisis un fichier PDF", type="pdf")
     
     if uploaded_file:
@@ -99,7 +102,7 @@ def main():
     # Section chat
     if st.session_state.chatbot:
         st.markdown("---")
-        st.markdown("## 💬 Chat avec ton PDF")
+        st.markdown("##  Chat avec ton PDF")
         
         # Zone de saisie pour la question
         question = st.text_input("Pose ta question sur le contenu du PDF :")
