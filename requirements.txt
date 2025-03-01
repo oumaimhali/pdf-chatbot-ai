@@ -6,3 +6,4 @@ python-dotenv==1.0.0
 pypdf==3.17.1
 faiss-cpu==1.7.4
 tiktoken==0.5.2
+pydantic==1.10.13
