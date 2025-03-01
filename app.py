@@ -35,25 +35,71 @@ class PDFChatbotCreator:
 
     def _create_github_repo(self):
         """Crée un nouveau dépôt GitHub."""
+        st.write("Démarrage de la création du dépôt GitHub...")
+        st.write(f"Token GitHub présent: {'Oui' if GITHUB_TOKEN else 'Non'}")
+        st.write(f"Longueur du token: {len(GITHUB_TOKEN) if GITHUB_TOKEN else 0}")
+        
+        if not GITHUB_TOKEN:
+            raise Exception("Token GitHub non trouvé. Vérifiez votre fichier .env")
+
         headers = {
             'Authorization': f'token {GITHUB_TOKEN}',
             'Accept': 'application/vnd.github.v3+json'
         }
         
-        response = requests.post(
-            'https://api.github.com/user/repos',
-            headers=headers,
-            json={
-                'name': self.repo_name,
-                'private': False,
-                'auto_init': True
-            }
-        )
-        
-        if response.status_code != 201:
-            raise Exception("Erreur lors de la création du dépôt GitHub")
+        try:
+            # Vérifier d'abord que le token fonctionne
+            st.write("Test de connexion à GitHub...")
+            st.write("URL: https://api.github.com/user")
+            st.write(f"Headers: {headers}")
+            
+            test_response = requests.get(
+                'https://api.github.com/user', 
+                headers=headers,
+                timeout=10,
+                verify=True
+            )
+            st.write(f"Status code: {test_response.status_code}")
+            st.write(f"Response: {test_response.text}")
+            
+            if test_response.status_code != 200:
+                raise Exception(f"Token GitHub invalide. Erreur: {test_response.json()}")
 
-        return response.json()['html_url']
+            # Créer le repo
+            st.write("Création du dépôt GitHub...")
+            st.write(f"Nom du dépôt: {self.repo_name}")
+            
+            response = requests.post(
+                'https://api.github.com/user/repos',
+                headers=headers,
+                json={
+                    'name': self.repo_name,
+                    'private': False,
+                    'auto_init': True
+                },
+                timeout=10,
+                verify=True
+            )
+            
+            st.write(f"Status code création repo: {response.status_code}")
+            st.write(f"Réponse création repo: {response.text}")
+            
+            if response.status_code != 201:
+                error_details = response.json() if response.text else "Pas de message d'erreur"
+                st.error(f"Réponse de l'API GitHub: {error_details}")
+                raise Exception(f"Erreur lors de la création du dépôt GitHub. Status: {response.status_code}")
+
+            return response.json()['html_url']
+
+        except requests.exceptions.Timeout:
+            raise Exception("Timeout lors de la connexion à GitHub. Vérifiez votre connexion internet.")
+        except requests.exceptions.SSLError:
+            raise Exception("Erreur SSL lors de la connexion à GitHub. Vérifiez votre connexion internet et vos certificats.")
+        except requests.exceptions.ConnectionError:
+            raise Exception("Erreur de connexion à GitHub. Vérifiez votre connexion internet.")
+        except Exception as e:
+            st.error(f"Exception complète: {str(e)}")
+            raise Exception(f"Erreur inattendue lors de la connexion à GitHub: {str(e)}")
 
     def _process_pdf(self):
         """Traite le PDF et crée le vectorstore."""
