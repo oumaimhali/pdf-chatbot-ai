@@ -7,6 +7,7 @@ from langchain.chains import ConversationalRetrievalChain
 from langchain_community.chat_models import ChatOpenAI
 import tempfile
 import os
+import hashlib
 from dotenv import load_dotenv
 
 # Charger les variables d'environnement
@@ -16,19 +17,50 @@ load_dotenv()
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 
 class PDFChatbot:
-    def __init__(self, pdf_path=None, pdf_content=None):
+    def __init__(self, pdf_path=None, pdf_content=None, pdf_name=None):
         self.pdf_path = pdf_path
         self.pdf_content = pdf_content
+        self.pdf_name = pdf_name
         self.vectorstore = None
         self.conversation = None
+        self.chat_id = None
+
+    def generate_chat_id(self):
+        """Génère un ID unique pour le chat basé sur le nom du PDF."""
+        if self.pdf_name:
+            # Créer un hash unique basé sur le nom du fichier
+            hash_object = hashlib.md5(self.pdf_name.encode())
+            self.chat_id = hash_object.hexdigest()[:8]
+            return self.chat_id
+        return None
+
+    def get_embed_code(self):
+        """Génère le code d'intégration HTML pour ce PDF spécifique."""
+        if not self.chat_id:
+            self.generate_chat_id()
+        
+        return f'''
+<!-- Code d'intégration pour {self.pdf_name} -->
+<div id="pdf-chat-{self.chat_id}"></div>
+<script src="https://your-domain.com/static/chatpdf-widget.js"></script>
+<script>
+    new PDFChatWidget({{
+        containerId: "pdf-chat-{self.chat_id}",
+        chatId: "{self.chat_id}",
+        pdfName: "{self.pdf_name}"
+    }});
+</script>
+'''
 
     def process_pdf(self):
         """Traite le fichier PDF et crée une base de données vectorielle."""
-        # Si le contenu est fourni directement (upload Streamlit)
         if self.pdf_content:
             with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
                 tmp_file.write(self.pdf_content)
                 self.pdf_path = tmp_file.name
+
+        # Générer un ID unique pour ce chat
+        self.generate_chat_id()
 
         # Charger le PDF
         loader = PyPDFLoader(self.pdf_path)
@@ -75,6 +107,8 @@ def main():
         st.session_state.chatbot = None
     if 'chat_history' not in st.session_state:
         st.session_state.chat_history = []
+    if 'embed_code' not in st.session_state:
+        st.session_state.embed_code = None
 
     # Section upload
     st.markdown("## Upload ton PDF")
@@ -87,10 +121,17 @@ def main():
         with col2:
             if st.button("Traiter le PDF"):
                 with st.spinner("Traitement du PDF en cours..."):
-                    chatbot = PDFChatbot(pdf_content=uploaded_file.getvalue())
+                    chatbot = PDFChatbot(pdf_content=uploaded_file.getvalue(), pdf_name=uploaded_file.name)
                     chatbot.process_pdf()
                     st.session_state.chatbot = chatbot
+                    st.session_state.embed_code = chatbot.get_embed_code()
                     st.success("PDF traité avec succès!")
+
+    # Section code d'intégration
+    if st.session_state.embed_code:
+        st.markdown("## Code d'intégration")
+        st.markdown("Utilisez ce code pour intégrer le chatbot sur votre site web :")
+        st.code(st.session_state.embed_code, language="html")
 
     # Section chat
     if st.session_state.chatbot:
