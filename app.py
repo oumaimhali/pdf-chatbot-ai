@@ -9,6 +9,8 @@ import tempfile
 import os
 import hashlib
 from dotenv import load_dotenv
+import json
+import shutil
 
 # Charger les variables d'environnement
 load_dotenv()
@@ -16,9 +18,9 @@ load_dotenv()
 # Configurer la clé API OpenAI
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 
-# Initialiser le stockage des chatbots
-if 'chatbots' not in st.session_state:
-    st.session_state.chatbots = {}
+# Dossier pour sauvegarder les données des PDFs
+PDF_DATA_DIR = "pdf_data"
+os.makedirs(PDF_DATA_DIR, exist_ok=True)
 
 class PDFChatbot:
     def __init__(self, pdf_path=None, pdf_content=None, pdf_name=None):
@@ -36,6 +38,45 @@ class PDFChatbot:
             self.chat_id = hash_object.hexdigest()[:8]
             return self.chat_id
         return None
+
+    def save_metadata(self):
+        """Sauvegarde les métadonnées du PDF."""
+        metadata = {
+            "pdf_name": self.pdf_name,
+            "chat_id": self.chat_id
+        }
+        metadata_path = os.path.join(PDF_DATA_DIR, f"{self.chat_id}_metadata.json")
+        with open(metadata_path, "w") as f:
+            json.dump(metadata, f)
+
+    @staticmethod
+    def load_chatbot(chat_id):
+        """Charge un chatbot à partir de son ID."""
+        metadata_path = os.path.join(PDF_DATA_DIR, f"{chat_id}_metadata.json")
+        if not os.path.exists(metadata_path):
+            return None
+
+        with open(metadata_path, "r") as f:
+            metadata = json.load(f)
+
+        chatbot = PDFChatbot(pdf_name=metadata["pdf_name"])
+        chatbot.chat_id = chat_id
+
+        # Charger le vectorstore
+        vectorstore_path = os.path.join(PDF_DATA_DIR, f"{chat_id}_vectorstore")
+        if os.path.exists(vectorstore_path):
+            embeddings = OpenAIEmbeddings(api_key=OPENAI_API_KEY)
+            chatbot.vectorstore = FAISS.load_local(vectorstore_path, embeddings)
+            
+            # Recréer la conversation
+            llm = ChatOpenAI(temperature=0, api_key=OPENAI_API_KEY)
+            chatbot.conversation = ConversationalRetrievalChain.from_llm(
+                llm=llm,
+                retriever=chatbot.vectorstore.as_retriever(),
+                return_source_documents=True
+            )
+
+        return chatbot
 
     def process_pdf(self):
         """Traite le fichier PDF et crée une base de données vectorielle."""
@@ -63,6 +104,13 @@ class PDFChatbot:
         embeddings = OpenAIEmbeddings(api_key=OPENAI_API_KEY)
         self.vectorstore = FAISS.from_documents(docs, embeddings)
 
+        # Sauvegarder le vectorstore
+        vectorstore_path = os.path.join(PDF_DATA_DIR, f"{self.chat_id}_vectorstore")
+        self.vectorstore.save_local(vectorstore_path)
+
+        # Sauvegarder les métadonnées
+        self.save_metadata()
+
         # Nettoyer le fichier temporaire
         if self.pdf_content:
             os.unlink(self.pdf_path)
@@ -74,9 +122,6 @@ class PDFChatbot:
             retriever=self.vectorstore.as_retriever(),
             return_source_documents=True
         )
-
-        # Sauvegarder dans la session
-        st.session_state.chatbots[self.chat_id] = self
 
     def get_response(self, question, chat_history=[]):
         """Obtient une réponse à une question."""
@@ -91,31 +136,36 @@ def main():
     # Vérifier si on est sur une page de chat spécifique
     chat_id = st.query_params.get("chat_id", None)
 
-    if chat_id and chat_id in st.session_state.chatbots:
-        # Interface de chat pour un PDF spécifique
-        chatbot = st.session_state.chatbots[chat_id]
-        st.markdown(f"## Chat avec {chatbot.pdf_name}")
+    if chat_id:
+        # Essayer de charger le chatbot existant
+        chatbot = PDFChatbot.load_chatbot(chat_id)
         
-        if 'messages' not in st.session_state:
-            st.session_state.messages = []
+        if chatbot and chatbot.vectorstore:
+            st.markdown(f"## Chat avec {chatbot.pdf_name}")
+            
+            if 'messages' not in st.session_state:
+                st.session_state.messages = []
 
-        # Afficher l'historique des messages
-        for message in st.session_state.messages:
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
+            # Afficher l'historique des messages
+            for message in st.session_state.messages:
+                with st.chat_message(message["role"]):
+                    st.markdown(message["content"])
 
-        # Zone de chat
-        if prompt := st.chat_input("Posez votre question sur le PDF"):
-            # Afficher la question de l'utilisateur
-            with st.chat_message("user"):
-                st.markdown(prompt)
-            st.session_state.messages.append({"role": "user", "content": prompt})
+            # Zone de chat
+            if prompt := st.chat_input("Posez votre question sur le PDF"):
+                # Afficher la question de l'utilisateur
+                with st.chat_message("user"):
+                    st.markdown(prompt)
+                st.session_state.messages.append({"role": "user", "content": prompt})
 
-            # Obtenir et afficher la réponse
-            with st.chat_message("assistant"):
-                response = chatbot.get_response(prompt)
-                st.markdown(response)
-            st.session_state.messages.append({"role": "assistant", "content": response})
+                # Obtenir et afficher la réponse
+                with st.chat_message("assistant"):
+                    response = chatbot.get_response(prompt)
+                    st.markdown(response)
+                st.session_state.messages.append({"role": "assistant", "content": response})
+        else:
+            st.error("Chatbot non trouvé. Veuillez retourner à la page d'accueil et uploader votre PDF à nouveau.")
+            st.markdown("[Retour à l'accueil](./)")
 
     else:
         # Interface principale pour l'upload
@@ -132,10 +182,11 @@ def main():
                         chatbot = PDFChatbot(pdf_content=uploaded_file.getvalue(), pdf_name=uploaded_file.name)
                         chatbot.process_pdf()
                         
-                        # Générer le lien
-                        chat_url = f"?chat_id={chatbot.chat_id}"
                         st.success("Chatbot créé avec succès!")
                         st.markdown("## Lien de votre chatbot")
+                        
+                        # Créer le lien absolu
+                        chat_url = f"?chat_id={chatbot.chat_id}"
                         st.markdown(f"[Cliquez ici pour accéder à votre chatbot]({chat_url})")
 
 if __name__ == '__main__':
