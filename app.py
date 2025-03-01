@@ -89,8 +89,7 @@ def main():
     st.title("PDF Chatbot")
 
     # Vérifier si on est sur une page de chat spécifique
-    query_params = st.experimental_get_query_params()
-    chat_id = query_params.get("chat_id", [None])[0]
+    chat_id = st.query_params.get("chat_id", None)
 
     if chat_id and chat_id in st.session_state.chatbots:
         # Interface de chat pour un PDF spécifique
